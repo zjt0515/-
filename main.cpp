@@ -3,13 +3,14 @@
 #include <cstdio>
 #include <easyx.h>
 #include <cstdlib>
-#define ROW 5				//地图行数
-#define COL 5				//地图列数
+#define ROW 5			//地图行数
+#define COL 5			//地图列数
 #define LANDMINE_NUM 2	//地雷数量
+#define LENGTH 40		//图片长度
+#define WIDTH 40		//图片宽度
 using namespace std;
 
 double TimeStart, TimeEnd;
-
 int difficulty = 1; //难度默认1，一共1，2，3三个难度
 
 int NearBy[ROW + 2][COL + 2];	//二维数组每个位置记录周围8个方块地雷数量(-1是地雷)
@@ -17,6 +18,7 @@ int NearBy[ROW + 2][COL + 2];	//二维数组每个位置记录周围8个方块地雷数量(-1是地雷
 //细节：数组长宽比地图行列数都多了2，也就是数组范围从0~row+1和0~col+1，但实际使用范围只用到1~row和1~col，前后多出来的1位防止后面计算NearBy时的数组越位问题(详细说就是计算时每次遇到地雷，都要将地雷周围8个格子对应的数字++，那么如果地雷在边角，地雷周围8个格子就不全在地图内了，这时如果不扩大数组，数组就会越位，强行防止越位需要写一大堆判断语句)
 
 char Map[ROW + 2][COL + 2];//显示给用户的地图
+IMAGE Img[20];//保存图片
 
 //未实现（写着玩的）
 struct user
@@ -30,8 +32,8 @@ struct user
 //函数声明
 void Menu();//菜单
 void LoadMap();//加载地图
-void PrintNearBy();//打印
-void PrintMap();//打印
+void PrintNearBy();//打印下面的数字
+void PrintMap();//打印上面的地图
 void Input();//输入
 void Islandmine(int flag, int x, int y);//输入后数据处理
 void Judge(int x, int y);//胜利或失败判断
@@ -39,6 +41,8 @@ void open(int x, int y);//打开0后炸开一片的递归
 void GameOver();		//游戏结束！ 
 void Login();			//登录
 void StartGame();		//开始游戏
+void Show();
+void LoadImages();
 
 
 //加载地图，包括随机埋地雷，并初始化NearBy，初始化map
@@ -81,7 +85,7 @@ void LoadMap()
 	//初始化地图map
 	memset(Map, '*', sizeof(Map));
 	PrintMap();
-
+	
 }
 
 //打印NearBy
@@ -110,6 +114,7 @@ void PrintNearBy()
 //打印Map
 void PrintMap()
 {
+	Show();
 	system("cls");
 	for (int k = 0; k <= COL; k++)
 	{
@@ -156,6 +161,9 @@ void Islandmine(int flag, int x, int y)
 		//遇到地雷
 		if (NearBy[x][y] == -1)
 		{
+			Map[x][y] = NearBy[x][y] + 48;//先打开
+			PrintMap();
+			PrintNearBy();
 			Judge(x, y);
 		}
 
@@ -261,7 +269,15 @@ void Judge(int x, int y)
 
 int main()
 {
+	initgraph(LENGTH * ROW, WIDTH * COL, EX_SHOWCONSOLE);
+	//loadimage(&Img[0], "./images/0.jpg", 40, 40);
+	LoadImages();
 	Menu();
+	closegraph();
+	while (true)
+	{
+
+	}
 	return 0;
 }
 
@@ -292,7 +308,8 @@ void GameOver()
 	PrintNearBy();
 	cout << "是否再来一把？y/n" << endl;
 	char ch;
-	if ((ch = getchar()) == 'y')
+	cin >> ch;
+	if (ch == 'y')
 	{
 		StartGame();
 	}
@@ -327,4 +344,45 @@ void Login()
 //排行榜相关(未完成)
 void rank() {
 
+}
+
+//根据map中的数字/符号显示对应图片
+void Show()
+{
+	for (int i = 1; i <= ROW; i++)
+	{
+		for (int j = 1; j <= COL; j++)
+		{
+			if (Map[i][j] == '*')
+			{
+				putimage(j * 40-40, i * 40-40, &Img[10]);
+			}
+			else if (Map[i][j] >= 48 && Map[i][j] <= 56)
+			{
+				for (int k = 0; k < 9; k++)
+				{
+					if (Map[i][j] == k + 48)
+					{
+						putimage(j * 40 - 40, i * 40 - 40, &Img[k]);
+					}
+				}
+				
+			}
+			else if (Map[i][j] != '*' && NearBy[i][j] == -1)
+			{
+				putimage(j * 40 - 40, i * 40 - 40, &Img[9]);
+			}
+		}
+	}
+}
+
+//加载图片
+void LoadImages()
+{
+	char path[50] = "";
+	for (int i = 0; i < 12; i++)
+	{
+		sprintf(path, "./images/%d.jpg", i);
+		loadimage(&Img[i], path,40,40);
+	}
 }
