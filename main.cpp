@@ -1,57 +1,87 @@
 #include <iostream>
 #include <ctime>
 #include <cstdio>
-#include <easyx.h>
 #include <cstdlib>
-#define ROW 5				//地图行数
-#define COL 5				//地图列数
-#define LANDMINE_NUM 2	//地雷数量
+#include <graphics.h>
+
+#define SIZE 40		//图片宽度，即每个格子的宽度，
 using namespace std;
+int row = 10;		//格子行数
+int col = 10;		//格子列数
+int number = 10;	//地雷数量
 
-double TimeStart, TimeEnd;
-
-int difficulty = 1; //难度默认1，一共1，2，3三个难度
-
-int NearBy[ROW + 2][COL + 2];	//二维数组每个位置记录周围8个方块地雷数量(-1是地雷)
-//注意：全局数组里所有数据都是0，后面不必再手动赋值0
-//细节：数组长宽比地图行列数都多了2，也就是数组范围从0~row+1和0~col+1，但实际使用范围只用到1~row和1~col，前后多出来的1位防止后面计算NearBy时的数组越位问题(详细说就是计算时每次遇到地雷，都要将地雷周围8个格子对应的数字++，那么如果地雷在边角，地雷周围8个格子就不全在地图内了，这时如果不扩大数组，数组就会越位，强行防止越位需要写一大堆判断语句)
-
-char Map[ROW + 2][COL + 2];//显示给用户的地图
-
-//未实现（写着玩的）
-struct user
-{
-	string name;
-	int difficulty;
-	int seconds;
-};
-
+IMAGE Img[20];//存储图片
+int cnt = 0;
+time_t TimeStart;//存储开始时间
+time_t TimeEnd;//存储结束时间
+int** NearBy = NULL;
+char** Map = NULL;
 
 //函数声明
-void Menu();//菜单
-void LoadMap();//加载地图
-void PrintNearBy();//打印
-void PrintMap();//打印
-void Input();//输入
-void Islandmine(int flag, int x, int y);//输入后数据处理
-void Judge(int x, int y);//胜利或失败判断
-void open(int x, int y);//打开0后炸开一片的递归
-void GameOver();		//游戏结束！ 
-void Login();			//登录
-void StartGame();		//开始游戏
+void Menu();		//菜单
+void Login();		//登录
+void StartGame();	//开始游戏
 
+void InitGame();						//加载地图
+void MouseClick();					//点击
+void Islandmine(int x, int y);		//输入后数据处理
+void Show();						//每次输入后要更新图片
+void Judge(int x, int y);			//胜利或失败判断
+
+void Expand(int x, int y);					//打开0后炸开一片的递归
+void Protect(int x, int y);					//第一次不能点到雷处理
+void Mark(int x, int y);					//右键标记
+
+void LoadImages();//加载图片
+void PrintNearBy();//打印下面的数字，测试专用
+void nanduxuanz();
+void kaishiyouxi();
+void Exit();//安全退出函数
+
+void Setting();
+void TextButton();
 
 //加载地图，包括随机埋地雷，并初始化NearBy，初始化map
-void LoadMap()
+void InitGame()
 {
+	initgraph(col * SIZE, row * SIZE,1);
+	//再始化()
+	cnt = 0;
+	//初始化
+	NearBy = new int* [row + 2];
+	for (int i = 0; i < row + 2; i++)
+	{
+		NearBy[i] = new int[col + 2];
+	}
+
+	Map = new char* [row + 2];
+	for (int i = 0; i < row + 2; i++)
+	{
+		Map[i] = new char[col + 2];
+	}
+	//初始化
+	for (int i = 1; i <= row; i++)
+	{
+		for (int j = 1; j <= col; j++)
+		{
+			NearBy[i][j] = 0;
+		}
+	}
+	for (int i = 1; i <= row; i++)
+	{
+		for (int j = 1; j <= col; j++)
+		{
+			Map[i][j] = '*';
+		}
+	}
+
 	//随机埋地雷
-	memset(NearBy, 0, sizeof(NearBy));//重置地图
 	srand((unsigned)time(NULL));	//注意该行代码不能放到循环内
 	int x, y;						//存储雷的坐标
-	for (int i = 0; i < LANDMINE_NUM ;)
+	for (int i = 0; i < number;)
 	{
-		x = rand() % ROW + 1;	//随机数x范围1~row
-		y = rand() % COL + 1;	//随机数y范围1~col
+		x = rand() % row + 1;	//随机数x范围1~row
+		y = rand() % col + 1;	//随机数y范围1~col
 		if (NearBy[x][y] == 0)	//要考虑到重复埋雷的问题
 		{
 			NearBy[x][y] = -1;
@@ -59,122 +89,96 @@ void LoadMap()
 		}
 	}
 
-
 	//计算每个位置周围地雷数量
-
-	//dx[k]和dy[k] 代表周围8个方块x、y方向上的坐标变化
-	int dx[8] = { -1,-1,-1,0,0,1,1,1 }, dy[8] = { -1,0,1,-1,1,-1,0,1 };
-
-	for (int i = 1; i <= ROW; i++)
+	for (int i = 1; i <= row; i++)
 	{
-		for (int j = 1; j <= COL; j++) {
+		for (int j = 1; j <= col; j++) {
 			if (NearBy[i][j] == -1)
 			{
-				for (int k = 0; k < 8; k++)
+				for (int p = i - 1; p <= i + 1; p++)
 				{
-					if (NearBy[i + dx[k]][j + dy[k]] != -1)//雷旁边的雷不能++
-						NearBy[i + dx[k]][j + dy[k]]++;
+					for (int q = j - 1; q <= j + 1; q++)
+					{
+						if (NearBy[p][q] != -1)//不是地雷就++，(不用排除自己，因为自己就是地雷，不会通过这条语句)
+						{
+							NearBy[p][q]++;
+						}
+					}
 				}
 			}
 		}
 	}
-	//初始化地图map
-	memset(Map, '*', sizeof(Map));
-	PrintMap();
-
+	PrintNearBy();
+	Show();
 }
 
-//打印NearBy
-void PrintNearBy()
+//开始游戏
+void StartGame()
 {
-	//system("cls");
-	cout << "下图仅用于测试" << endl;
-	for (int k = 0; k <= COL; k++)
-	{
-		printf("%3d", k);
-	}
-	cout << endl;
-	cout << "---------------------" << endl;
-	for (int i = 1; i <= ROW; i++)
-	{
-		printf("%d |", i);
-		for (int j = 1; j <= COL; j++)
-		{
-			printf("%3d", NearBy[i][j]);
-		}
-		cout << endl;
-	}
-	cout << "---------------------" << endl;
+	InitGame();
+	time(&TimeStart);
+	MouseClick();
 }
-
-//打印Map
-void PrintMap()
-{
-	system("cls");
-	for (int k = 0; k <= COL; k++)
-	{
-		printf("%3d", k);
-	}
-	cout << endl;
-	cout << "---------------------" << endl;
-	for (int i = 1; i <= ROW; i++)
-	{
-		printf("%d |", i);
-		for (int j = 1; j <= COL; j++)
-		{
-			printf("%3c", Map[i][j]);
-		}
-		cout << endl;
-	}
-	cout << "---------------------" << endl;
-}
-
 
 
 //判定是否是地雷，是否不是地雷
-void Islandmine(int flag, int x, int y)
+void Islandmine(int x, int y)
 {
-	//模拟鼠标右键标记
-	if (flag == 1)
+	//遇到已经打开的或者已经标记了的
+	if (Map[x][y] == '@' || Map[x][y] != '*')
 	{
-		if (Map[x][y] == '@')
-		{
-			Map[x][y] = '*';
-			cout << "取消标记成功" << endl;
-			PrintMap();
-		}
-		else
-		{
-			Map[x][y] = '@';
-			cout << "标记成功" << endl;
-			PrintMap();
-		}
+		return;
 	}
-	//模拟鼠标左键打开
-	else
+	else if (NearBy[x][y] == -1)
 	{
-		//遇到地雷
-		if (NearBy[x][y] == -1)
+		if (cnt == 0)
 		{
-			Judge(x, y);
-		}
-
-		//不是地雷
-		else
-		{
+			Protect(x, y);
 			Map[x][y] = NearBy[x][y] + 48;//先打开
-			open(x, y);//如果是0，就要特殊操作了
-			PrintMap();
+			Expand(x, y);//如果是0，就要特殊操作了
 			PrintNearBy();
 			Judge(x, y);//每次输入后都要判断是否胜利
 		}
+		else
+		{
+			Map[x][y] = NearBy[x][y] + 48;//先打开
+			PrintNearBy();
+			Judge(x, y);
+		}
+
+	}
+	//不是地雷
+	else
+	{
+		Map[x][y] = NearBy[x][y] + 48;//先打开
+		Expand(x, y);//如果是0，就要特殊操作了
+		PrintNearBy();
+		Judge(x, y);//每次输入后都要判断是否胜利
 	}
 }
+
+//右键标记
+void Mark(int x, int y)
+{
+	if (Map[x][y] == '@')
+	{
+		Map[x][y] = '*';
+		cout << "取消标记成功" << endl;
+		Show();
+	}
+	else
+	{
+		Map[x][y] = '@';
+		cout << "标记成功" << endl;
+		Show();
+	}
+}
+
 //递归点开格子
-void open(int x, int y)
+void Expand(int x, int y)
 {
 	//首先检验坐标是否在地图内
-	if (x >= 1 && x <= ROW && y >= 1 && y <= COL)
+	if (x >= 1 && x <= row && y >= 1 && y <= col)
 	{
 		//如果为0，要递归
 		if (NearBy[x][y] == 0)
@@ -184,11 +188,12 @@ void open(int x, int y)
 			{
 				for (int j = y - 1; j <= y + 1; j++)
 				{
-				
-					if (Map[i][j]=='*' && (i != x || j != y))//没有被打开，并且不是自己
+					//没有被打开，并且不是自己
+					if (Map[i][j] == '*' && (i != x || j != y))
 					{
+						cnt++;
 						Map[i][j] = NearBy[i][j] + 48;//0旁边8个一定会被打开
-						open(i, j);//递归调用旁边8个，旁边8个如果是0就和刚才一样，不是0,open的判断就过不去，不会再递归调用，仅仅打开了自己
+						Expand(i, j);//递归调用旁边8个，旁边8个如果是0就和刚才一样，不是0,的判断就过不去，不会再递归调用，仅仅打开了自己
 					}
 				}
 			}
@@ -196,24 +201,159 @@ void open(int x, int y)
 	}
 }
 
-//用户输入
-void Input()
+//用户点击
+void MouseClick()
 {
-	int flag, x, y;
-	cout << "请输入: 1.标记地雷 0.标记不是地雷，再输入坐标 ,格式：0 1 2" << endl;
-	scanf_s("%d%d%d", &flag, &x, &y);
-
-	//判断坐标是否输入正确
-	if (x >= 1 && x <= ROW && y >= 1 && y <= COL && (Map[x][y] == '*'||Map[x][y] =='@'))
+	ExMessage msg;
+	while (true)
 	{
-		cout << "输入正确" << endl;
-		Islandmine(flag, x, y);
+		if (peekmessage(&msg))
+		{
+			int x = msg.y / SIZE + 1;
+			int y = msg.x / SIZE + 1;
+			switch (msg.message)
+			{
+			case WM_LBUTTONDOWN: Islandmine(x, y); break;
+			case WM_RBUTTONDOWN: Mark(x, y); break;
+			}
+		}
 	}
-	//坐标输入错误
-	else
+}
+
+
+
+//第一次不能点到雷
+void Protect(int x, int y)
+{
+	int a, b;
+	srand((unsigned)time(NULL));	//注意该行代码不能放到循环内
+	do
 	{
-		cout << "坐标错误，可能是越过地图了或者您已经点开了该点" << endl;
-		Input();
+		a = rand() % row + 1;	//随机数x范围1~row
+		b = rand() % col + 1;	//随机数y范围1~col
+
+	} while (NearBy[a][b] == -1);//找到一个没雷的位置把雷偷偷转移走
+
+	NearBy[a][b] = -1;
+	NearBy[x][y] = 0;
+	//先把下面原来炸弹周围的点--
+	for (int i = x - 1; i <= x + 1; i++)
+	{
+		for (int j = y - 1; j <= y + 1; j++)
+		{
+			if ((i != x || j != y) && NearBy[i][j] != -1)
+			{
+				NearBy[i][j]--;
+			}
+			if (NearBy[i][j] == -1)
+			{
+				NearBy[x][y]++;
+			}
+		}
+	}
+
+	//新位置加一个雷，周围++
+	for (int i = a - 1; i <= a + 1; i++)
+	{
+		for (int j = b - 1; j <= b + 1; j++)
+		{
+			if ((i != x || j != y) && NearBy[i][j] != -1)
+			{
+				NearBy[i][j]++;
+			}
+		}
+	}
+}
+
+//打印NearBy，这是测试代码！！！！！
+void PrintNearBy()
+{
+	//system("cls");
+	cout << "下图仅用于测试" << endl;
+	for (int k = 0; k <= col; k++)
+	{
+		printf("%3d", k);
+	}
+	cout << endl;
+	cout << "---------------------" << endl;
+	for (int i = 1; i <= row; i++)
+	{
+		printf("%d |", i);
+		for (int j = 1; j <= col; j++)
+		{
+			printf("%3d", NearBy[i][j]);
+		}
+		cout << endl;
+	}
+	cout << "---------------------" << endl;
+	cout << cnt << endl;
+}
+
+//*****************************主函数***********************************
+int main()
+{
+	
+	LoadImages();
+	
+	Menu();
+	//StartGame();
+	getchar();
+	return 0;
+}
+
+//*****************************下面是涉及到图形化的代码***********************************
+
+
+
+//显示图片1-8,空白,炸弹，棋子等图片！(根据map中的数字/符号显示对应图片)
+void Show()
+{
+	for (int i = 1; i <= row; i++)
+	{
+		for (int j = 1; j <= col; j++)
+		{
+			//如果没有被翻开就放置图片10
+			if (Map[i][j] == '*')
+			{
+				putimage(j * SIZE - SIZE, i * SIZE - SIZE, &Img[10]);
+			}
+			//如果数字被翻开了就显示对应图片
+			else if (Map[i][j] >= 48 && Map[i][j] <= 56)
+			{
+				for (int k = 0; k < 9; k++)
+				{
+					if (Map[i][j] == k + 48)
+					{
+						putimage(j * SIZE - SIZE, i * SIZE - SIZE, &Img[k]);
+					}
+				}
+
+			}
+			//如果翻开了地雷就显示地雷图片
+			else if (Map[i][j] != '*' && Map[i][j] != '@' && NearBy[i][j] == -1)
+			{
+				putimage(j * SIZE - SIZE, i * SIZE - SIZE, &Img[9]);
+			}
+			//如果被标记了就显示标记图片
+			else if (Map[i][j] == '@')
+			{
+				putimage(j * SIZE - SIZE, i * SIZE - SIZE, &Img[11]);
+			}
+		}
+	}
+}
+
+//加载图片
+void LoadImages()
+{
+	//设置顶部文字
+	HWND hnd = GetHWnd();
+	SetWindowText(hnd, "不会玩扫雷");
+	char path[50];
+	for (int i = 0; i < 12; i++)
+	{
+		sprintf(path, "./images/%d.jpg", i);
+		loadimage(&Img[i], path, SIZE, SIZE);
 	}
 }
 
@@ -221,16 +361,26 @@ void Input()
 //目前的判断胜利逻辑是检测地图上有几个没有被翻开，没有被翻开的数目=雷数才能获胜，会不会遇到bug？
 void Judge(int x, int y)
 {
+	Show();
 	int Count = 0;
 	if (NearBy[x][y] == -1)
 	{
-		GameOver();
+		HWND choice = GetHWnd();
+		int ch = MessageBox(choice, "蹦蹦炸弹！是否再来一局？", "失败", MB_OKCANCEL);
+		if (ch == IDOK)
+		{
+			StartGame();
+		}
+		else
+		{
+			Menu();
+		}
 	}
 	else
 	{
-		for (int i = 1; i <= ROW; i++)
+		for (int i = 1; i <= row; i++)
 		{
-			for (int j = 1; j <= COL; j++)
+			for (int j = 1; j <= col; j++)
 			{
 				if (Map[i][j] == '@' || Map[i][j] == '*')
 				{
@@ -239,92 +389,139 @@ void Judge(int x, int y)
 			}
 		}
 	}
-	cout << Count<<endl;
-	if (Count == LANDMINE_NUM)
+	cout << Count << endl;
+	if (Count == number)
 	{
-		cout << "获胜，耗时:";
-		cout << "是否再来一把？y/n" << endl;
-		char ch;
-		cin >> ch;
-		if (ch == 'y')
+		HWND choice = GetHWnd();
+		time(&TimeEnd);
+		int i = TimeEnd - TimeStart;
+		char str[50];
+		sprintf(str, "您获胜了，耗时:%ds，是否在玩一次", i);
+		int ch = MessageBox(choice, str, "很好", MB_OKCANCEL);
+		if (ch == IDOK)
 		{
 			StartGame();
 		}
 		else
 		{
-			exit(0);
+			Menu();
 		}
 	}
 }
 
-
-
-int main()
+void Exit()
 {
-	Menu();
-	return 0;
+	//释放new出来的
+	for (int i = 0; i < row; i++)
+	{
+		delete[] NearBy[i];
+	}
+	delete[] NearBy;
+
+	for (int i = 0; i < row; i++)
+	{
+		delete[] Map[i];
+	}
+	delete[] Map;
+	//关闭窗口和程序
+	closegraph();
+	exit(0);
 }
 
-
-
-//游戏菜单
 void Menu()
 {
-	int choice;
-	cout << "	请输入下面选项的对应序号" << endl;
-	cout << "           1.登录           " << endl;
-	cout << "           2.开始游戏           " << endl;
-	cout << "           3.退出           " << endl;
-	cin >> choice;
-	switch (choice)
+	initgraph(640, 640);
+	setbkcolor(WHITE);
+	cleardevice();
+	TextButton();
+	ExMessage msg;
+	while (true)
 	{
-	case 1:Login(); break;
-	case 2:StartGame(); break;
-	case 3:exit(0); break;
-	default:
-		break;
-	}
-}
-//游戏失败
-void GameOver()
-{
-	cout << "踩到地雷，游戏失败" << endl;
-	PrintNearBy();
-	cout << "是否再来一把？y/n" << endl;
-	char ch;
-	if ((ch = getchar()) == 'y')
-	{
-		StartGame();
-	}
-	else
-	{
-		exit(0);
-	}
-}
-
-//开始游戏
-void StartGame()
-{
-	LoadMap();
-	while (true) {
-		Input();
+		if (peekmessage(&msg,EM_MOUSE))
+		{
+			if (msg.message == WM_LBUTTONDOWN)
+			{
+				if (msg.x >= 40 && msg.x <= 200 && msg.y >= 250 && msg.y <= 290)
+				{
+					cleardevice();
+					StartGame();
+				}
+				if (msg.x >= 40 && msg.x <= 120 && msg.y >= 325 && msg.y <= 365)
+				{
+					char name[20];
+					int isok = InputBox(name, 20, "请输入您的用户名，至多20字符", "登录", NULL, 0, 0, false);
+					if (isok == 1)
+					{
+						HWND hwnd = GetHWnd();
+						MessageBox(hwnd, "登录成功", "提示", MB_OK);
+						outtextxy(100, 20, name);
+					}
+					
+				}
+				if (msg.x >= 40 && msg.x <= 120 && msg.y >= 400 && msg.y <= 440)
+				{
+					Setting();
+				}
+				if (msg.x >= 40 && msg.x <= 120 && msg.y >= 475 && msg.y <= 515)
+				{
+					Exit();
+				}
+			}
+		}
 	}
 	
 }
-
-//登录（未完成,写着玩的）
-void Login()
+void TextButton()
 {
-	cout << "请输入用户名" << endl;
-	string n;
-	cin >> n;
-	struct user user1;
-	user1.name = n;
-	cout << "登录成功" << endl;
-	Menu();
+	settextcolor(BLACK);
+	settextstyle(40, 0, "VonwaonBitmap 16px");
+	outtextxy(40, 250, "开始游戏");
+	outtextxy(40, 325, "登录");
+	outtextxy(40, 400, "设置");
+	outtextxy(40, 475, "退出");
 }
-
-//排行榜相关(未完成)
-void rank() {
-
+void Setting()
+{
+	cleardevice();
+	outtextxy(40, 50, "难度:");
+	outtextxy(180, 50, "简单");
+	outtextxy(300, 50, "普通");
+	outtextxy(420, 50, "困难");
+	outtextxy(40, 125, "皮肤:");
+	outtextxy(500, 540, "返回");
+	ExMessage msg;
+	while (true)
+	{
+		if (peekmessage(&msg,EM_MOUSE))
+		{
+			if (msg.message==WM_LBUTTONDOWN)
+			{
+				if (msg.x >= 180 && msg.x <= 260 && msg.y >= 50 && msg.y <= 90)
+				{
+					row = 8;
+					col = 8;
+					number = 5;
+					MessageBox(NULL, "简单模式设置成功", "提示", MB_OK);
+				}
+				if (msg.x >= 300 && msg.x <= 380 && msg.y >= 50 && msg.y <= 90)
+				{
+					row = 12;
+					col = 12;
+					number = 15;
+					MessageBox(NULL, "普通模式设置成功", "提示", MB_OK);
+				}
+				if (msg.x >= 420 && msg.x <= 500 && msg.y >= 50 && msg.y <= 90)
+				{
+					row = 20;
+					col = 20;
+					number = 60;
+					MessageBox(NULL, "困难模式设置成功", "提示", MB_OK);
+				}
+				if (msg.x >= 500 && msg.x <= 580 && msg.y >= 540 && msg.y <= 580)
+				{
+					Menu();
+				}
+			}
+		}
+	}
 }
