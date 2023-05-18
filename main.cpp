@@ -3,17 +3,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <graphics.h>
-#include <string>
+#include <mmsystem.h>
+#pragma comment(lib,"winmm.lib")
 
 #define SIZE 40		//图片宽度，即每个格子的宽度，
-#define N 5			//显示的记录条数
+#define N 5		//显示的记录条数
+#define M N*3   //3个难度，一共15条记录
 using namespace std;
-int row = 10;		//格子行数
-int col = 10;		//格子列数
+int row = 9;		//格子行数
+int col = 9;		//格子列数
 int number = 10;	//地雷数量
 
 IMAGE Img[20];//存储图片
-int cnt = 0;
+int cnt = 0;//存已经打开的格子
 time_t TimeStart;//存储开始时间
 time_t TimeEnd;//存储结束时间
 int** NearBy = NULL;
@@ -47,19 +49,20 @@ void WriteFile();
 
 typedef struct User
 {
-	int Level;	        	             
-	char name[20];		                 
-	int time;	                                         
-}User;                                    
+	int Level;
+	char name[20];
+	int time;
+}User;
 
-User st[N];
-User CurrentUser;
+User Top[M+1];
+User CurrentUser = {1,"佚名"};//存当前游玩用户信息，默认是难度1，佚名
+
 //加载地图，包括随机埋地雷，并初始化NearBy，初始化map
 void InitGame()
 {
 	initgraph(col * SIZE, row * SIZE, 1);
-	//再始化()
-	cnt = 0;
+
+	cnt = 0;//重置打开的格子个数记录器
 	//初始化
 	NearBy = new int* [row + 2];
 	for (int i = 0; i < row + 2; i++)
@@ -129,6 +132,8 @@ void InitGame()
 void StartGame()
 {
 	InitGame();
+	mciSendString("open ./images/start.mp3", 0, 0, 0);
+	mciSendString("play ./images/start.mp3", 0, 0, 0);
 	time(&TimeStart);
 	MouseClick();
 }
@@ -137,43 +142,38 @@ void StartGame()
 //判定是否是地雷，是否不是地雷
 void Islandmine(int x, int y)
 {
-	//遇到已经打开的或者已经标记了的
-	if (Map[x][y] == '@' || Map[x][y] != '*')
-	{
-		return;
-	}
+	//遇到已经打开的或者已经标记了的直接return
+	if (Map[x][y] == '@' || Map[x][y] != '*')return;
+	//遇到了地雷
 	else if (NearBy[x][y] == -1)
 	{
+		//第一次就遇到雷要保护
 		if (cnt == 0)
 		{
 			Protect(x, y);
-			Map[x][y] = NearBy[x][y] + 48;//先打开
-			Expand(x, y);//如果是0，就要特殊操作了
-			PrintNearBy();
-			Judge(x, y);//每次输入后都要判断是否胜利
 		}
-		else
-		{
-			Map[x][y] = NearBy[x][y] + 48;//先打开
+			Expand(x, y);
 			PrintNearBy();
-			Judge(x, y);
-		}
-
 	}
 	//不是地雷
 	else
 	{
-		Map[x][y] = NearBy[x][y] + 48;//先打开
-		Expand(x, y);//如果是0，就要特殊操作了
+		Expand(x, y);
 		PrintNearBy();
-		Judge(x, y);//每次输入后都要判断是否胜利
 	}
+	Judge(x, y);//输入式检测是否输赢
 }
 
 //右键标记
 void Mark(int x, int y)
 {
 	if (Map[x][y] == '@')
+	{
+		Map[x][y] = '&';
+		cout << "问号成功" << endl;
+		Show();
+	}
+	else if (Map[x][y] == '&')
 	{
 		Map[x][y] = '*';
 		cout << "取消标记成功" << endl;
@@ -190,25 +190,19 @@ void Mark(int x, int y)
 //递归点开格子
 void Expand(int x, int y)
 {
-	//首先检验坐标是否在地图内
-	if (x >= 1 && x <= row && y >= 1 && y <= col)
+	Map[x][y] = NearBy[x][y] + 48;
+	if (NearBy[x][y] == -1)return;//这条代码是为了让该函数可以给 打开雷\0\1-8三种情况  同时使用的
+	cnt++;//记录下已经翻开的格子
+	if (NearBy[x][y] > 0)return;
+	if (!(x >= 1 && x <= row && y >= 1 && y <= col))return;
+	for (int i = x - 1; i <= x + 1; i++)
 	{
-		//如果为0，要递归
-		if (NearBy[x][y] == 0)
+		for (int j = y - 1; j <= y + 1; j++)
 		{
-			//递归检查周围8个
-			for (int i = x - 1; i <= x + 1; i++)
+			
+			if (Map[i][j] == '*')
 			{
-				for (int j = y - 1; j <= y + 1; j++)
-				{
-					//没有被打开，并且不是自己
-					if (Map[i][j] == '*' && (i != x || j != y))
-					{
-						cnt++;
-						Map[i][j] = NearBy[i][j] + 48;//0旁边8个一定会被打开
-						Expand(i, j);//递归调用旁边8个，旁边8个如果是0就和刚才一样，不是0,的判断就过不去，不会再递归调用，仅仅打开了自己
-					}
-				}
+				Expand(i, j);
 			}
 		}
 	}
@@ -340,7 +334,7 @@ void Show()
 
 			}
 			//如果翻开了地雷就显示地雷图片
-			else if (Map[i][j] != '*' && Map[i][j] != '@' && NearBy[i][j] == -1)
+			else if (Map[i][j] != '*' && Map[i][j] != '@'&&Map[i][j] != '&' && NearBy[i][j] == -1)
 			{
 				putimage(j * SIZE - SIZE, i * SIZE - SIZE, &Img[9]);
 			}
@@ -348,6 +342,11 @@ void Show()
 			else if (Map[i][j] == '@')
 			{
 				putimage(j * SIZE - SIZE, i * SIZE - SIZE, &Img[11]);
+			}
+			//被问号了就显示问号
+			else if (Map[i][j] == '&')
+			{
+				putimage(j * SIZE - SIZE, i * SIZE - SIZE, &Img[12]);
 			}
 		}
 	}
@@ -360,6 +359,7 @@ void LoadImages()
 	HWND hnd = GetHWnd();
 	SetWindowText(hnd, "不会玩扫雷");
 	char path[50];
+	loadimage(&Img[19], "./images/bg.png", 640, 640);
 	for (int i = 0; i < 12; i++)
 	{
 		sprintf(path, "./images/%d.jpg", i);
@@ -369,14 +369,25 @@ void LoadImages()
 
 //胜利或失败判断，每输入一次后判断一下
 //目前的判断胜利逻辑是检测地图上有几个没有被翻开，没有被翻开的数目=雷数才能获胜，会不会遇到bug？
+//更新：重写了expand函数，现在能准确计算被翻开的格子有多少个
 void Judge(int x, int y)
 {
 	Show();
-	int Count = 0;
 	if (NearBy[x][y] == -1)
 	{
+		for (int i = 1; i <= row; i++)
+		{
+			for (int j = 1; j <= col; j++)
+			{
+				if (NearBy[i][j] == -1)
+				{
+					Map[i][j] == -1 + 48;
+				}
+			}
+		}
+		Show();
 		HWND choice = GetHWnd();
-		int ch = MessageBox(choice, "蹦蹦炸弹！是否再来一局？", "失败", MB_OKCANCEL);
+		int ch = MessageBox(choice, "你失败了，是否再来一局？", "失败", MB_OKCANCEL);
 		if (ch == IDOK)
 		{
 			StartGame();
@@ -387,21 +398,8 @@ void Judge(int x, int y)
 			Menu();
 		}
 	}
-	else
-	{
-		for (int i = 1; i <= row; i++)
-		{
-			for (int j = 1; j <= col; j++)
-			{
-				if (Map[i][j] == '@' || Map[i][j] == '*')
-				{
-					Count++;
-				}
-			}
-		}
-	}
-	cout << Count << endl;
-	if (Count == number)
+
+	if (cnt == row * col - number)
 	{
 		HWND choice = GetHWnd();
 		time(&TimeEnd);
@@ -448,6 +446,7 @@ void Menu()
 {
 	setbkcolor(WHITE);
 	cleardevice();
+	putimage(0, 0, &Img[19]);
 	TextButton();
 	ExMessage msg;
 	while (true)
@@ -463,8 +462,8 @@ void Menu()
 				}
 				if (msg.x >= 40 && msg.x <= 120 && msg.y >= 325 && msg.y <= 365)
 				{
-					int isok = InputBox(CurrentUser.name, 20, "请输入您的用户名，至多20字符", "登录", NULL, 0, 0, false);
-					if (isok == 1)
+					int isok = InputBox(CurrentUser.name, 10, "请输入您的用户名，最多使用10个字符，无法使用空白名", "登录", NULL, 0, 0, false);
+					if (isok == 1 )
 					{
 						HWND hwnd = GetHWnd();
 						MessageBox(hwnd, "登录成功", "提示", MB_OK);
@@ -520,25 +519,25 @@ void Setting()
 				if (msg.x >= 180 && msg.x <= 260 && msg.y >= 50 && msg.y <= 90)
 				{
 					CurrentUser.Level = 1;
-					row = 8;
-					col = 8;
-					number = 5;
+					row = 9;
+					col = 9;
+					number = 10;
 					MessageBox(NULL, "简单模式设置成功", "提示", MB_OK);
 				}
 				if (msg.x >= 300 && msg.x <= 380 && msg.y >= 50 && msg.y <= 90)
 				{
 					CurrentUser.Level = 2;
-					row = 12;
-					col = 12;
-					number = 15;
+					row = 16;
+					col = 16;
+					number = 40;
 					MessageBox(NULL, "普通模式设置成功", "提示", MB_OK);
 				}
 				if (msg.x >= 420 && msg.x <= 500 && msg.y >= 50 && msg.y <= 90)
 				{
 					CurrentUser.Level = 3;
-					row = 20;
-					col = 20;
-					number = 60;
+					row = 16;
+					col = 30;
+					number = 99;
 					MessageBox(NULL, "困难模式设置成功", "提示", MB_OK);
 				}
 				if (msg.x >= 500 && msg.x <= 580 && msg.y >= 540 && msg.y <= 580)
@@ -553,21 +552,24 @@ void ShowRank()
 {
 	cleardevice();
 	outtextxy(500, 540, "返回");
+	outtextxy(20, 20, "简单:");
+	outtextxy(20, 220, "普通:");
+	outtextxy(20, 440, "困难:");
 	settextstyle(20, 0, "VonwaonBitmap 12px");
 	ReadFile();
-	for (int i = 0; i < N; i++)
+	for (int i = 1; i <= M; i++)
 	{
 		char time[20];
-		sprintf(time, "%d", st[i].time);
-		outtextxy(30, 50 + 30 * i, st[i].name);
-		outtextxy(100, 50 + 30 * i, time);
+		sprintf(time, "%d", Top[i].time);
+		outtextxy(300, 40 + 30 * i, Top[i].name);
+		outtextxy(380, 40 + 30 * i, time);
 	}
 	ExMessage msg;
 	while (true)
 	{
-		if (peekmessage(&msg,EX_MOUSE))
+		if (peekmessage(&msg, EX_MOUSE))
 		{
-			if (msg.message==WM_LBUTTONDOWN)
+			if (msg.message == WM_LBUTTONDOWN)
 			{
 				if (msg.x >= 500 && msg.x <= 580 && msg.y >= 540 && msg.y <= 580)
 				{
@@ -580,10 +582,10 @@ void ShowRank()
 
 //*************************文件部分*************************
 
-//读入排行榜文件中的数据，以进行随后的数据比较
+//读入文件中的数据，以进行随后的数据比较
 void ReadFile()
 {
-	int i = 0;                       /*此处i应初始化为0*/
+	int i = 1;                       /*此处i应初始化为0*/
 	FILE* fp;                        /*定义文件指针*/
 	fp = fopen("./rank.txt", "r");     /*打开文本文件准备读入数据*/
 	if (fp == 0)                     /*如果文件打开失败 */
@@ -594,59 +596,72 @@ void ReadFile()
 	while (!feof(fp))               /*当文件未结束时进入循环*/
 	{
 		/*结构体数组的下标加1然后继续读入*/
-		fscanf(fp, "%d%s%d", &st[i].Level, st[i].name, &st[i].time);
+		fscanf(fp, "%d%s%d", &Top[i].Level, Top[i].name, &Top[i].time);
 		i++;
 	}
-	for (int i = 0; i < N; i++)
+	//测试代码
+	for (int i = 1; i <= M; i++)
 	{
-		printf("%d%s%d\n", st[i].Level, st[i].name, st[i].time);
+		printf("%d%s%d\n", Top[i].Level, Top[i].name, Top[i].time);
 	}
 	fclose(fp);                     /*关闭文件*/
 }
 //数据比较
 void SortRank()
 {	
-	cout << "SortrankSTART" << endl;
-	int i = N - 1;
-	for ( i = N - 1; i >= 0;)
+	int last;
+	int i = 0;
+	int cnt = 0;
+	switch (CurrentUser.Level)
 	{
-		if (CurrentUser.time < st[i].time)
+	case 1: i = last = 5; break;
+	case 2: i = last = 10; break;
+	case 3: i = last = 15; break;
+	}
+	if (CurrentUser.time>=Top[i].time)
+	{
+		return;//最后一名都比不过直接return吧
+	}
+	else
+	{
+		//跟倒数第二名开始比
+		do
 		{
+			//最多比5次，防止和其他赛道的比
+			if (cnt == 5)
+			{
+				break;
+			}
 			i--;
-		}
-		else
-		{
-			break;
-		}
+			cnt++;
+		} while (CurrentUser.time < Top[i].time );//出while后说明当前用户比不过top[i]，但能比过top[i+1]
+		//cnt：比了cnt次，当前用户就是倒数第cnt名，例如，只比了1次，就说明没比过倒数第二名，就是倒数第一名，比了2次，就说明没比过倒数第三名，就是倒数第二名
 	}
-	i++;
-	cout << "Sortrankzhong" << endl;
-	//替换数据
-	if (i < N)
+	cout << cnt << endl << i<< endl;
+	int king = ++i;//现在++i就是当前用户应该取代的地方，但别急着取代，我们应该先把i以及下面的废物向下移位
+	for (int k = 0; k < cnt - 1; last--,k++)//进行cnt-1次移位(例如，倒数cnt名，不难得出要进行cnt-1次移位)
 	{
-		strcpy(st[i].name, CurrentUser.name);
-		st[i].time = CurrentUser.time;
-		cout << "替换数据成goon" << endl;
+		strcpy(Top[last].name, Top[last-1].name);
+		Top[last].time = Top[last-1].time;
 	}
-	cout << "Sortrankend" << endl;
-	
+	//新王登基
+	strcpy(Top[king].name, CurrentUser.name);
+	Top[king].time = CurrentUser.time;
 }
 //数据重新写入
 void WriteFile()
 {
 	int i;
 	FILE* fp;
-	fp = fopen("./rank.txt", "w");     /*以w方式打开文本文件准备写入内容*/
-	if (fp == 0)	      	    /* 如果文件打开失败 */
+	fp = fopen("./rank.txt", "w");   /*以w方式打开文本文件准备写入内容*/
+	if (fp == 0)	      					 /* 如果文件打开失败 */
 	{
-		printf("create new file error\n");
+		printf("create new file error\n");	//报错并退出程序
 		exit(1);
 	}
-	for (i = 0; i < N; i++)           /*记录条数n确知时可以这样控制循环*/
-	{  /*下面两条语句以相同的格式将记录分别写入文件和屏幕显示*/
-		fprintf(fp, "%d %s %d\n", st[i].Level, st[i].name, st[i].time);
+	for (i = 1; i <= M; i++)
+	{ 
+		fprintf(fp, "%d %s %d\n", Top[i].Level, Top[i].name, Top[i].time);//写入文件
 	}
 	fclose(fp);              /*关闭文件*/
 }
-
-
